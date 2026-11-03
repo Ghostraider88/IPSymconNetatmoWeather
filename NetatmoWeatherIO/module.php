@@ -214,8 +214,8 @@ class NetatmoWeatherIO extends IPSModule
 
     protected function ProcessHookData()
     {
-        $this->SendDebug(__FUNCTION__, '_SERVER=' . print_r($_SERVER, true), 0);
-        $this->SendDebug(__FUNCTION__, '_GET=' . print_r($_GET, true), 0);
+        $this->SendDebug(__FUNCTION__, 'OAuth callback received', 0);
+        $this->SendDebug(__FUNCTION__, 'OAuth callback parameters received', 0);
 
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
@@ -301,7 +301,22 @@ class NetatmoWeatherIO extends IPSModule
             ];
             $url = $this->build_url('https://' . self::$api_server . '/oauth2/authorize', $params);
         }
-        $this->SendDebug(__FUNCTION__, 'url=' . $url, 0);
+        $this->SendDebug(__FUNCTION__, 'url=' . $this->redactUrl($url), 0);
+        return $url;
+    }
+
+    private function redactUrl($url)
+    {
+        $url = (string) $url;
+        $url = preg_replace('/^([a-z][a-z0-9+.-]*:\\/\\/)[^\\/?#@]+@/i', '$1', $url);
+        $queryPosition = strpos($url, '?');
+        if ($queryPosition !== false) {
+            $url = substr($url, 0, $queryPosition);
+        }
+        $fragmentPosition = strpos($url, '#');
+        if ($fragmentPosition !== false) {
+            $url = substr($url, 0, $fragmentPosition);
+        }
         return $url;
     }
 
@@ -312,8 +327,8 @@ class NetatmoWeatherIO extends IPSModule
         $curl_exec_delay = $this->ReadPropertyFloat('curl_exec_delay');
 
         $url = 'https://oauth.ipmagic.de/access_token/' . $this->oauthIdentifer;
-        $this->SendDebug(__FUNCTION__, 'url=' . $url, 0);
-        $this->SendDebug(__FUNCTION__, '    content=' . print_r($content, true), 0);
+        $this->SendDebug(__FUNCTION__, 'url=' . $this->redactUrl($url), 0);
+        $this->SendDebug(__FUNCTION__, '    content fields=' . implode(', ', array_keys($content)), 0);
 
         $headerfields = [
             'Content-Type' => 'application/x-www-form-urlencoded',
@@ -375,9 +390,9 @@ class NetatmoWeatherIO extends IPSModule
             $head = substr($response, 0, $header_size);
             $body = substr($response, $header_size);
 
-            $this->SendDebug(__FUNCTION__, ' => head=' . $head, 0);
+            $this->SendDebug(__FUNCTION__, ' => response headers omitted', 0);
             if ($body == '' || ctype_print($body)) {
-                $this->SendDebug(__FUNCTION__, ' => body=' . $body, 0);
+                $this->SendDebug(__FUNCTION__, ' => response body omitted', 0);
             } else {
                 $this->SendDebug(__FUNCTION__, ' => body potentially contains binary data, size=' . strlen($body), 0);
             }
@@ -414,7 +429,7 @@ class NetatmoWeatherIO extends IPSModule
         }
 
         if ($statuscode) {
-            $this->LogMessage('url=' . $url . ' => statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
+            $this->LogMessage('url=' . $this->redactUrl($url) . ' => statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
             $this->SendDebug(__FUNCTION__, '    statuscode=' . $statuscode . ', err=' . $err, 0);
             $this->MaintainStatus($statuscode);
             return false;
@@ -424,14 +439,14 @@ class NetatmoWeatherIO extends IPSModule
 
     private function FetchRefreshToken($code)
     {
-        $this->SendDebug(__FUNCTION__, 'code=' . $code, 0);
+        $this->SendDebug(__FUNCTION__, 'authorization code received', 0);
         $jdata = $this->Call4AccessToken(['code' => $code]);
         if ($jdata == false) {
             $this->SendDebug(__FUNCTION__, 'got no token', 0);
             $this->SetBuffer('ApiAccessToken', '');
             return false;
         }
-        $this->SendDebug(__FUNCTION__, 'jdata=' . print_r($jdata, true), 0);
+        $this->SendDebug(__FUNCTION__, 'token response received', 0);
         $access_token = $jdata['access_token'];
         $expiration = time() + $jdata['expires_in'];
         $refresh_token = $jdata['refresh_token'];
@@ -461,14 +476,14 @@ class NetatmoWeatherIO extends IPSModule
                     $access_token = '';
                 }
                 if ($access_token != '') {
-                    $this->SendDebug(__FUNCTION__, 'access_token=' . $access_token . ', valid until ' . date('d.m.y H:i:s', $expiration), 0);
+                    $this->SendDebug(__FUNCTION__, 'access token available, valid until ' . date('d.m.y H:i:s', $expiration), 0);
                     return $access_token;
                 }
             } else {
                 $this->SendDebug(__FUNCTION__, 'no saved access_token', 0);
             }
             $refresh_token = $this->ReadAttributeString('ApiRefreshToken');
-            $this->SendDebug(__FUNCTION__, 'refresh_token=' . $refresh_token, 0);
+            $this->SendDebug(__FUNCTION__, 'refresh token available', 0);
             if ($refresh_token == '') {
                 $this->SendDebug(__FUNCTION__, 'has no refresh_token', 0);
                 $this->WriteAttributeString('ApiRefreshToken', '');
@@ -487,11 +502,11 @@ class NetatmoWeatherIO extends IPSModule
             $expiration = time() + $jdata['expires_in'];
             if (isset($jdata['refresh_token'])) {
                 $refresh_token = $jdata['refresh_token'];
-                $this->SendDebug(__FUNCTION__, 'new refresh_token=' . $refresh_token, 0);
+                $this->SendDebug(__FUNCTION__, 'new refresh token received', 0);
                 $this->WriteAttributeString('ApiRefreshToken', $refresh_token);
             }
         }
-        $this->SendDebug(__FUNCTION__, 'new access_token=' . $access_token . ', valid until ' . date('d.m.y H:i:s', $expiration), 0);
+        $this->SendDebug(__FUNCTION__, 'new access token available, valid until ' . date('d.m.y H:i:s', $expiration), 0);
         $jtoken = [
             'access_token' => $access_token,
             'expiration'   => $expiration,
@@ -504,7 +519,7 @@ class NetatmoWeatherIO extends IPSModule
     protected function ProcessOAuthData()
     {
         if (!isset($_GET['code'])) {
-            $this->SendDebug(__FUNCTION__, 'code missing, _GET=' . print_r($_GET, true), 0);
+            $this->SendDebug(__FUNCTION__, 'authorization code missing from callback', 0);
             $this->WriteAttributeString('ApiRefreshToken', '');
             $this->SetBuffer('ApiAccessToken', '');
             $this->MaintainTimer('UpdateData', 0);
@@ -515,7 +530,7 @@ class NetatmoWeatherIO extends IPSModule
         if ($refresh_token === false) {
             $refresh_token = '';
         }
-        $this->SendDebug(__FUNCTION__, 'refresh_token=' . $refresh_token, 0);
+        $this->SendDebug(__FUNCTION__, 'refresh token available', 0);
         $this->WriteAttributeString('ApiRefreshToken', $refresh_token);
         if ($this->GetStatus() == self::$IS_NOLOGIN) {
             $this->MaintainTimer('UpdateData', 1000);
@@ -844,7 +859,7 @@ class NetatmoWeatherIO extends IPSModule
 
     protected function SendData($data)
     {
-        $this->SendDebug(__FUNCTION__, 'data=' . print_r($data, true), 0);
+        $this->SendDebug(__FUNCTION__, 'outgoing payload omitted', 0);
         $this->SendDataToChildren(json_encode(['DataID' => '{2D42552F-2545-9145-D3C8-A299E3FDC6EA}', 'Buffer' => $data]));
     }
 
@@ -856,7 +871,7 @@ class NetatmoWeatherIO extends IPSModule
         }
 
         $jdata = json_decode($data, true);
-        $this->SendDebug(__FUNCTION__, 'data=' . print_r($jdata, true), 0);
+        $this->SendDebug(__FUNCTION__, 'request fields=' . implode(', ', array_keys((array) $jdata)), 0);
 
         $ret = '';
         if (isset($jdata['Function'])) {
@@ -884,7 +899,7 @@ class NetatmoWeatherIO extends IPSModule
     private function OAuthStep2($data)
     {
         if (isset($data['code']) == false) {
-            $this->SendDebug(__FUNCTION__, 'item "code" ist missing in data=' . print_r($data, true), 0);
+            $this->SendDebug(__FUNCTION__, 'item "code" ist missing in request', 0);
             $this->MaintainStatus(self::$IS_INVALIDDATA);
             $this->SetMultiBuffer('LastData', '');
             return false;
@@ -907,7 +922,7 @@ class NetatmoWeatherIO extends IPSModule
             'scope'         => implode(' ', self::$scopes),
         ];
 
-        $this->SendDebug(__FUNCTION__, 'postfields=' . print_r($postfields, true), 0);
+        $this->SendDebug(__FUNCTION__, 'post fields=' . implode(', ', array_keys($postfields)), 0);
         $header = $this->build_header($headerfields);
         $postdata = http_build_query($postfields);
 
@@ -916,7 +931,7 @@ class NetatmoWeatherIO extends IPSModule
         $statuscode = $this->do_HttpRequest($url, $header, $postdata, 'POST', $data, $err);
         if ($statuscode == 0) {
             $params = json_decode($data, true);
-            $this->SendDebug(__FUNCTION__, 'params=' . print_r($params, true), 0);
+            $this->SendDebug(__FUNCTION__, 'token response fields=' . implode(', ', array_keys((array) $params)), 0);
             if ($params['access_token'] == '') {
                 $statuscode = self::$IS_INVALIDDATA;
                 $err = "no 'access_token' in response";
@@ -924,7 +939,7 @@ class NetatmoWeatherIO extends IPSModule
         }
 
         if ($statuscode) {
-            $this->LogMessage('url=' . $url . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
+            $this->LogMessage('url=' . $this->redactUrl($url) . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
             $this->SendDebug(__FUNCTION__, $err, 0);
             $this->MaintainStatus($statuscode);
             $this->SetMultiBuffer('LastData', '');
@@ -934,7 +949,7 @@ class NetatmoWeatherIO extends IPSModule
         $access_token = $params['access_token'];
         $expires_in = $params['expires_in'];
         $expiration = time() + $expires_in - 60;
-        $this->SendDebug(__FUNCTION__, 'new access_token=' . $access_token . ', valid until ' . date('d.m.y H:i:s', $expiration), 0);
+        $this->SendDebug(__FUNCTION__, 'new access token available, valid until ' . date('d.m.y H:i:s', $expiration), 0);
         $jtoken = [
             'access_token' => $access_token,
             'expiration'   => $expiration,
@@ -944,7 +959,7 @@ class NetatmoWeatherIO extends IPSModule
 
         if (isset($params['refresh_token'])) {
             $refresh_token = $params['refresh_token'];
-            $this->SendDebug(__FUNCTION__, 'new refresh_token=' . $refresh_token, 0);
+            $this->SendDebug(__FUNCTION__, 'new refresh token received', 0);
             $this->WriteAttributeString('ApiRefreshToken', $refresh_token);
         }
 
@@ -1015,7 +1030,7 @@ class NetatmoWeatherIO extends IPSModule
                     $statuscode = $this->do_HttpRequest($url, '', $postdata, 'POST', $data, $err);
                     if ($statuscode == 0) {
                         $params = json_decode($data, true);
-                        $this->SendDebug(__FUNCTION__, 'params=' . print_r($params, true), 0);
+                        $this->SendDebug(__FUNCTION__, 'token response fields=' . implode(', ', array_keys((array) $params)), 0);
                         if ($params['access_token'] == '') {
                             $statuscode = self::$IS_INVALIDDATA;
                             $err = "no 'access_token' in response";
@@ -1023,7 +1038,7 @@ class NetatmoWeatherIO extends IPSModule
                     }
 
                     if ($statuscode) {
-                        $this->LogMessage('url=' . $url . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
+                        $this->LogMessage('url=' . $this->redactUrl($url) . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
                         $this->SendDebug(__FUNCTION__, $err, 0);
                         $this->MaintainStatus($statuscode);
                         $this->SetMultiBuffer('LastData', '');
@@ -1033,7 +1048,7 @@ class NetatmoWeatherIO extends IPSModule
                     $access_token = $params['access_token'];
                     $expires_in = $params['expires_in'];
                     $expiration = time() + $expires_in - 60;
-                    $this->SendDebug(__FUNCTION__, 'new access_token=' . $access_token . ', valid until ' . date('d.m.y H:i:s', $expiration), 0);
+                    $this->SendDebug(__FUNCTION__, 'new access token available, valid until ' . date('d.m.y H:i:s', $expiration), 0);
                     $jtoken = [
                         'access_token' => $access_token,
                         'expiration'   => $expiration,
@@ -1043,7 +1058,7 @@ class NetatmoWeatherIO extends IPSModule
 
                     if (isset($params['refresh_token'])) {
                         $refresh_token = $params['refresh_token'];
-                        $this->SendDebug(__FUNCTION__, 'new refresh_token=' . $refresh_token, 0);
+                        $this->SendDebug(__FUNCTION__, 'new refresh token received', 0);
                         $this->WriteAttributeString('ApiRefreshToken', $refresh_token);
                     }
 
@@ -1092,7 +1107,7 @@ class NetatmoWeatherIO extends IPSModule
         $statuscode = $this->do_HttpRequest($url, $header, '', 'GET', $data, $err);
         if ($statuscode == 0) {
             $jdata = json_decode($data, true);
-            $this->SendDebug(__FUNCTION__, 'jdata=' . print_r($jdata, true), 0);
+            $this->SendDebug(__FUNCTION__, 'weather response received', 0);
             $status = $jdata['status'];
             if ($status != 'ok') {
                 $err = 'got status "' . $status . '"';
@@ -1120,7 +1135,7 @@ class NetatmoWeatherIO extends IPSModule
             } else {
                 $this->SetUpdateInterval();
             }
-            $this->LogMessage('url=' . $url . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
+            $this->LogMessage('url=' . $this->redactUrl($url) . ', statuscode=' . $statuscode . ', err=' . $err, KL_WARNING);
             $this->SendDebug(__FUNCTION__, $err, 0);
             $this->SetBuffer('LastData', '');
             $this->MaintainStatus($statuscode);
@@ -1141,13 +1156,13 @@ class NetatmoWeatherIO extends IPSModule
         $curl_exec_attempts = $this->ReadPropertyInteger('curl_exec_attempts');
         $curl_exec_delay = $this->ReadPropertyFloat('curl_exec_delay');
 
-        $this->SendDebug(__FUNCTION__, 'http-' . $mode . ': url=' . $url, 0);
+        $this->SendDebug(__FUNCTION__, 'http-' . $mode . ': url=' . $this->redactUrl($url), 0);
 
         if ($header != '') {
-            $this->SendDebug(__FUNCTION__, '    header=' . print_r($header, true), 0);
+            $this->SendDebug(__FUNCTION__, '    request headers omitted (may contain credentials)', 0);
         }
         if ($postdata != '') {
-            $this->SendDebug(__FUNCTION__, '    postdata=' . print_r($postdata, true), 0);
+            $this->SendDebug(__FUNCTION__, '    request body omitted (may contain credentials)', 0);
         }
 
         $time_start = microtime(true);
@@ -1189,7 +1204,7 @@ class NetatmoWeatherIO extends IPSModule
                 $this->SendDebug(__FUNCTION__, ' => attempt=' . $attempt . ', got curl-errno ' . $cerrno . ' (' . $cerror . ')', 0);
                 IPS_Sleep((int) floor($curl_exec_delay * 1000));
                 $retry = true;
-            } elseif ($httpcode == 429) {
+            } elseif ($httpcode == 429 || (strtoupper($mode) == 'GET' && $httpcode >= 500 && $httpcode < 600)) {
                 $this->SendDebug(__FUNCTION__, ' => attempt=' . $attempt . ', got http-code ' . $httpcode . ' (' . $this->HttpCode2Text($httpcode) . ')', 0);
                 IPS_Sleep((int) floor($curl_exec_delay * 1000));
                 $retry = true;
@@ -1204,7 +1219,7 @@ class NetatmoWeatherIO extends IPSModule
 
         $duration = round(microtime(true) - $time_start, 2);
         $this->SendDebug(__FUNCTION__, ' => errno=' . $cerrno . ', httpcode=' . $httpcode . ', duration=' . $duration . 's, attempts=' . $attempt, 0);
-        $this->SendDebug(__FUNCTION__, '    cdata=' . $cdata, 0);
+        $this->SendDebug(__FUNCTION__, '    response body omitted', 0);
 
         $statuscode = 0;
         $err = '';
@@ -1243,11 +1258,11 @@ class NetatmoWeatherIO extends IPSModule
         }
 
         $this->SendDebug(__FUNCTION__, '    statuscode=' . $statuscode . ', err=' . $err, 0);
-        $this->SendDebug(__FUNCTION__, '    data=' . $data, 0);
+        $this->SendDebug(__FUNCTION__, '    response body omitted', 0);
 
         $collectApiCallStats = $this->ReadPropertyBoolean('collectApiCallStats');
         if ($collectApiCallStats) {
-            $this->ApiCallCollect($url, $err, $statuscode);
+            $this->ApiCallCollect($this->redactUrl($url), $err, $statuscode);
         }
 
         return $statuscode;
@@ -1256,17 +1271,17 @@ class NetatmoWeatherIO extends IPSModule
     private function ClearToken()
     {
         $refresh_token = $this->ReadAttributeString('ApiRefreshToken');
-        $this->SendDebug(__FUNCTION__, 'clear refresh_token=' . $refresh_token, 0);
+        $this->SendDebug(__FUNCTION__, 'clearing refresh token', 0);
         $this->WriteAttributeString('ApiRefreshToken', '');
 
         $access_token = $this->GetApiAccessToken();
-        $this->SendDebug(__FUNCTION__, 'clear access_token=' . $access_token, 0);
+        $this->SendDebug(__FUNCTION__, 'clearing access token', 0);
         $this->SetBuffer('ApiAccessToken', '');
     }
 
     private function SetRefreshToken($refresh_token)
     {
-        $this->SendDebug(__FUNCTION__, 'set refresh_token=' . $refresh_token, 0);
+        $this->SendDebug(__FUNCTION__, 'setting refresh token', 0);
         $this->WriteAttributeString('ApiRefreshToken', $refresh_token);
         $jtoken = [
             'access_token' => '',
