@@ -245,6 +245,7 @@ _[1]_: Hinweis zum Intervall: die Daten werden nur ca. alle 10m von der Wetterst
 Bei einer Angabe von 5m sind die Werte nicht älter als 15m.
 
 _[2]_: als Kommunikationsfehler werden die Abrufe definiert, bei der es keine qualifizierte Reaktion der Gegenseite gibt (also einen HTTP-Code).<br>
+Bei HTTP-GET-Aufrufen werden HTTP-5xx-Antworten zusätzlich wiederholt. Die Verzögerung zwischen den Wiederholungen verdoppelt sich, ausgehend vom eingestellten Grundwert, bis maximal 60 Sekunden. Die Anzahl bezeichnet zusätzliche Versuche nach dem ersten Abruf; nach dem letzten Versuch wird nicht mehr gewartet.
 Achtung: die maximale Wartezeit in Sekunden berechnet sich wie folgt: ((*Timeout* + *Verzögerung*) * *Anzahl*) + 1 => solange ist der Thread der Instanz maximal blockiert!
 
 #### Schaltflächen

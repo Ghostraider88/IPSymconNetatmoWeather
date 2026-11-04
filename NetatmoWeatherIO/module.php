@@ -1193,25 +1193,30 @@ class NetatmoWeatherIO extends IPSModule
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
-        $attempt = 1;
+        $attempt = 0;
         $retry = false;
         do {
+            $attempt++;
             $cdata = curl_exec($ch);
             $cerrno = curl_errno($ch);
             $cerror = $cerrno ? curl_error($ch) : '';
             $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             if ($cerrno) {
                 $this->SendDebug(__FUNCTION__, ' => attempt=' . $attempt . ', got curl-errno ' . $cerrno . ' (' . $cerror . ')', 0);
-                IPS_Sleep((int) floor($curl_exec_delay * 1000));
                 $retry = true;
             } elseif ($httpcode == 429 || (strtoupper($mode) == 'GET' && $httpcode >= 500 && $httpcode < 600)) {
                 $this->SendDebug(__FUNCTION__, ' => attempt=' . $attempt . ', got http-code ' . $httpcode . ' (' . $this->HttpCode2Text($httpcode) . ')', 0);
-                IPS_Sleep((int) floor($curl_exec_delay * 1000));
                 $retry = true;
             } else {
                 $retry = false;
             }
-        } while ($retry && $attempt++ <= $curl_exec_attempts);
+            if ($retry && $attempt <= $curl_exec_attempts) {
+                // The setting is the number of retries after the first request.
+                // Use exponential backoff, capped at the form's 60-second maximum.
+                $retryDelay = min(60.0, max(0.0, $curl_exec_delay) * (2 ** ($attempt - 1)));
+                IPS_Sleep((int) floor($retryDelay * 1000));
+            }
+        } while ($retry && $attempt <= $curl_exec_attempts);
 
         if (IPS_GetKernelVersion() < 8.5) {
             curl_close($ch);
